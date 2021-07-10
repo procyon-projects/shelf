@@ -1,0 +1,42 @@
+{{- $joinLength := len .Joins -}}
+{{- $lastJoinIndex := minus $joinLength 1 -}}
+
+{{- $orderLength := len .Orders -}}
+{{- $lastOrderIndex := minus $orderLength 1 -}}
+
+{{- $columnLength := len .Columns -}}
+{{- $lastColumnIndex := minus $columnLength 1 -}}
+
+rows, err := db.Query("SELECT {{range $columnIndex, $column :=  .Columns -}}
+    {{- if eq $column.Table "" -}}
+        {{ $column.Name }}
+    {{- else -}}
+        {{ $column.Table }}.{{ $column.Name }}
+    {{- end -}}
+    {{- if ne $columnIndex $lastColumnIndex  -}}, {{ end -}}
+{{- end }} FROM {{ .Table }}
+
+{{- if ne $joinLength 0 -}}
+    {{- range $join :=  .Joins }} INNER JOIN {{ $join.Table }} ON {{ $.Table }}.{{ $join.JoinColumn }} = {{ $join.Table}}.{{ $join.Column }}
+    {{- end }}
+{{- else -}}
+
+{{- end }}
+
+{{- if ne $orderLength 0 }} ORDER BY
+    {{- range $orderIndex, $orderBy := .Orders }} {{ $orderBy.Table }}.{{ $orderBy.Name }} {{if eq $orderBy.Order 0 -}}
+            ASC
+        {{- else -}}
+            DESC
+        {{- end -}}
+        {{- if ne $orderIndex $lastOrderIndex  -}},{{ end -}}
+    {{- end }}
+{{- else -}}
+
+{{- end }}
+
+if err != nil {
+    return
+}
+
+defer rows.Close()
