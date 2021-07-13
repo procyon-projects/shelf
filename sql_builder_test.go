@@ -8,9 +8,13 @@ func TestPostgresSqlQueryBuilder_CreateQuery(t *testing.T) {
 		Select("firstName", "lastName").
 		Limit(10).
 		Offset(0).
+		Join("UserDetails", "userDetails").
+		InnerJoin("Users", "id", "id").
 		Where().
+		GroupConditions().
 		Equals("firstName", "test", true).Or().
-		Equals("lastName", "").
+		Equals("lastName", "").And().
+		Between("", "", "").
 		OrderBy("firstName").Sort(ASC).
 		OrderBy("lastName").Sort(DESC).
 		CreateQuery()

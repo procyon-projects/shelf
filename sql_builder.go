@@ -6,16 +6,31 @@ import (
 	"strings"
 )
 
-type Query struct {
-	Text string
-}
-
 type Sort int
 
 const (
 	ASC Sort = iota
 	DESC
 )
+
+const (
+	Postgres = "Postgres"
+)
+
+type Table struct {
+	Name  string
+	Alias string
+}
+
+type Query struct {
+	Text string
+}
+
+type SqlMultiConditions interface {
+	Or() SqlConditions
+	And() SqlConditions
+	OrderBy(column string) SqlSort
+}
 
 type SqlOrder interface {
 	OrderBy(column string) SqlSort
@@ -25,12 +40,6 @@ type SqlOrder interface {
 type SqlSort interface {
 	Sort(sort Sort) SqlOrder
 	CreateQuery() (Query, error)
-}
-
-type SqlMultiConditions interface {
-	Or() SqlConditions
-	And() SqlConditions
-	OrderBy(column string) SqlSort
 }
 
 type SqlConditions interface {
@@ -52,12 +61,28 @@ type SqlConditions interface {
 	Like(column string, value string) SqlMultiConditions
 	StartWith(column string, value string) SqlMultiConditions
 	EndWith(column string, value string) SqlMultiConditions
+	GroupConditions() SqlConditions
 	OrderBy(column string) SqlSort
+}
+
+type SqlMultipleJoins interface {
+	Join(table string, tableAlias ...string) SqlJoin
+	OrderBy(column string) SqlSort
+	Where() SqlConditions
+	CreateQuery() (Query, error)
+}
+
+type SqlJoin interface {
+	InnerJoin(otherTable string, tableKey string, otherTableKey string) SqlMultipleJoins
+	LeftJoin(otherTable string, tableKey string, otherTableKey string) SqlMultipleJoins
+	RightJoin(otherTable string, tableKey string, otherTableKey string) SqlMultipleJoins
+	FullJoin(otherTable string, tableKey string, otherTableKey string) SqlMultipleJoins
 }
 
 type SqlSelect interface {
 	Select(columns ...string) SqlSelect
 	Limit(limit uint) SqlSelect
+	Join(table string, tableAlias ...string) SqlJoin
 	Offset(offset uint) SqlSelect
 	OrderBy(column string) SqlSort
 	Where() SqlConditions
@@ -68,10 +93,6 @@ type SqlQueryBuilder interface {
 	Table(name string, alias ...string) SqlSelect
 }
 
-const (
-	Postgres = "Postgres"
-)
-
 func GetSqlQueryBuilder(database string) SqlQueryBuilder {
 
 	if database == Postgres {
@@ -79,11 +100,6 @@ func GetSqlQueryBuilder(database string) SqlQueryBuilder {
 	}
 
 	return nil
-}
-
-type Table struct {
-	Name  string
-	Alias string
 }
 
 type postgresSqlQueryBuilder struct {
@@ -215,6 +231,30 @@ func (builder *postgresSqlQueryBuilder) Or() SqlConditions {
 }
 
 func (builder *postgresSqlQueryBuilder) And() SqlConditions {
+	return builder
+}
+
+func (builder *postgresSqlQueryBuilder) GroupConditions() SqlConditions {
+	return builder
+}
+
+func (builder *postgresSqlQueryBuilder) Join(table string, tableAlias ...string) SqlJoin {
+	return builder
+}
+
+func (builder *postgresSqlQueryBuilder) InnerJoin(otherTable string, tableKey string, otherTableKey string) SqlMultipleJoins {
+	return builder
+}
+
+func (builder *postgresSqlQueryBuilder) LeftJoin(otherTable string, tableKey string, otherTableKey string) SqlMultipleJoins {
+	return builder
+}
+
+func (builder *postgresSqlQueryBuilder) RightJoin(otherTable string, tableKey string, otherTableKey string) SqlMultipleJoins {
+	return builder
+}
+
+func (builder *postgresSqlQueryBuilder) FullJoin(otherTable string, tableKey string, otherTableKey string) SqlMultipleJoins {
 	return builder
 }
 
