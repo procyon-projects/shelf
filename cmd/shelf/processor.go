@@ -21,10 +21,14 @@ import (
 )
 
 var (
-	errs         []error
-	entities     []marker.StructType
-	repositories []marker.InterfaceType
-	loaders      []marker.InterfaceType
+	errs []error
+
+	entityMetadataByStructName = make(map[string]EntityMetadata)
+	entitiesByName             = make(map[string]string, 0)
+	entitiesByTableName        = make(map[string]string, 0)
+
+	repositoryMetadataByInterfaceName = make(map[string]RepositoryMetadata)
+	repositoriesByName                = make(map[string]string, 0)
 )
 
 // Register your marker definitions.
@@ -46,6 +50,18 @@ func RegisterDefinitions(registry *marker.Registry) error {
 
 		{Name: shelf.MarkerRepository, Level: marker.InterfaceTypeLevel, Output: &shelf.RepositoryMarker{}},
 		{Name: shelf.MarkerQuery, Level: marker.InterfaceMethodLevel, Output: &shelf.QueryMarker{}},
+
+		{Name: shelf.MarkerEmbeddable, Level: marker.StructTypeLevel, Output: &shelf.EmbeddableMarker{}},
+		{Name: shelf.MarkerEmbedded, Level: marker.FieldLevel, Output: &shelf.EmbeddedMarker{}},
+		{Name: shelf.MarkerAttributeOverride, Level: marker.FieldLevel, Output: &shelf.AttributeOverrideMarker{}},
+
+		{Name: shelf.MarkerMapsId, Level: marker.FieldLevel, Output: &shelf.MapsIdMarker{}},
+		{Name: shelf.MarkerOneToOne, Level: marker.FieldLevel, Output: &shelf.OneToOneMarker{}},
+		{Name: shelf.MarkerOneToMany, Level: marker.FieldLevel, Output: &shelf.OneToManyMarker{}},
+		{Name: shelf.MarkerManyToOne, Level: marker.FieldLevel, Output: &shelf.ManyToOneMarker{}},
+		{Name: shelf.MarkerManyToMany, Level: marker.FieldLevel, Output: &shelf.ManyToManyMarker{}},
+
+		{Name: shelf.MarkerTemporal, Level: marker.FieldLevel, Output: &shelf.TemporalMarker{}},
 	}
 
 	for _, m := range markers {
@@ -61,6 +77,7 @@ func RegisterDefinitions(registry *marker.Registry) error {
 // Process your markers.
 func ProcessMarkers(collector *marker.Collector, pkgs []*marker.Package) error {
 	marker.EachFile(collector, pkgs, func(file *marker.File, err error) {
+		FindEntities(file.StructTypes)
 		FindRepositories(file.InterfaceTypes)
 	})
 	return marker.NewErrorList(errs)
