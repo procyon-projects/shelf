@@ -66,7 +66,7 @@ func FindRepositories(interfaceTypes []marker.InterfaceType) {
 		markers, ok := markerValues[shelf.MarkerRepository]
 
 		if !ok {
-			return
+			continue
 		}
 
 		var err error
@@ -104,7 +104,7 @@ func FindRepositories(interfaceTypes []marker.InterfaceType) {
 				continue
 			}
 
-			metadata := RepositoryMetadata{
+			metadata := &RepositoryMetadata{
 				RepositoryName: repositoryName,
 				EntityName:     entityName,
 				InterfaceType:  interfaceType,
@@ -114,6 +114,12 @@ func FindRepositories(interfaceTypes []marker.InterfaceType) {
 			repositoryMetadataByInterfaceName[fullInterfaceName] = metadata
 			repositoriesByName[repositoryName] = fullInterfaceName
 		}
+
+	}
+}
+
+func ProcessRepositories() {
+	for _, _ = range repositoryMetadataByInterfaceName {
 
 	}
 }
@@ -170,7 +176,7 @@ func ValidateRepositoryMethodParameters(method marker.Method) {
 
 	for index, param := range method.Parameters {
 		if index == 0 {
-			name := GetFullNameFromType(param.Type)
+			name := TypeNameFromType(param.Type)
 			if "context.Context" != name {
 				err := errors.New("the type of the first parameter must be context.Context for repositories")
 				errs = append(errs, marker.NewError(err, method.File.FullPath, marker.Position{

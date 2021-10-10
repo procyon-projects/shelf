@@ -8,6 +8,7 @@ import (
 // +shelf:repository="user-repository", Entity=User
 type UserRepository interface {
 	LoadPosts() UserRepository
+	LoadCreditCard() UserRepository
 
 	Count(ctx context.Context) int
 	ExistsById(ctx context.Context, id int) bool

@@ -23,11 +23,16 @@ import (
 var (
 	errs []error
 
-	entityMetadataByStructName = make(map[string]EntityMetadata)
+	files = make(map[string]*marker.File)
+
+	enumsByName                    = make(map[string]*EnumMetadata)
+	embeddableMetadataByStructName = make(map[string]*EmbeddableMetadata)
+
+	entityMetadataByStructName = make(map[string]*EntityMetadata)
 	entitiesByName             = make(map[string]string, 0)
 	entitiesByTableName        = make(map[string]string, 0)
 
-	repositoryMetadataByInterfaceName = make(map[string]RepositoryMetadata)
+	repositoryMetadataByInterfaceName = make(map[string]*RepositoryMetadata)
 	repositoriesByName                = make(map[string]string, 0)
 )
 
@@ -62,6 +67,8 @@ func RegisterDefinitions(registry *marker.Registry) error {
 		{Name: shelf.MarkerManyToMany, Level: marker.FieldLevel, Output: &shelf.ManyToManyMarker{}},
 
 		{Name: shelf.MarkerTemporal, Level: marker.FieldLevel, Output: &shelf.TemporalMarker{}},
+		{Name: shelf.MarkerCreatedDate, Level: marker.FieldLevel, Output: &shelf.CreatedDateMarker{}},
+		{Name: shelf.MarkerLastModifiedDate, Level: marker.FieldLevel, Output: &shelf.LastModifiedDateMarker{}},
 	}
 
 	for _, m := range markers {
@@ -77,8 +84,25 @@ func RegisterDefinitions(registry *marker.Registry) error {
 // Process your markers.
 func ProcessMarkers(collector *marker.Collector, pkgs []*marker.Package) error {
 	marker.EachFile(collector, pkgs, func(file *marker.File, err error) {
-		FindEntities(file.StructTypes)
-		FindRepositories(file.InterfaceTypes)
+		files[file.Package.Path+"#"+file.Name] = file
 	})
+
+	for _, file := range files {
+		FindEnums(file)
+	}
+
+	for _, file := range files {
+		FindEmbeddables(file.StructTypes)
+	}
+
+	for _, file := range files {
+		FindEntities(file.StructTypes)
+	}
+
+	for _, file := range files {
+		FindRepositories(file.InterfaceTypes)
+	}
+
+	ProcessEntities()
 	return marker.NewErrorList(errs)
 }

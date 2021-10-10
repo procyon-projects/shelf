@@ -18,13 +18,11 @@ type User struct {
 	// +shelf:id
 	// +shelf:generated-value
 	Id int
-
 	// +shelf:column=Unique=true, Length=500
 	Email string
 
 	FirstName string
 	LastName  string
-
 	// +shelf:enumerated=STRING
 	Status UserStatus
 
@@ -81,6 +79,7 @@ type PostDetails struct {
 	// +shelf:column=id
 	Id int
 	// +shelf:column=created_on
+	// +shelf:created-date
 	CreatedOn time.Time
 	// +shelf:column=created_by
 	CreatedBy string
