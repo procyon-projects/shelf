@@ -88,21 +88,20 @@ func ProcessMarkers(collector *marker.Collector, pkgs []*marker.Package) error {
 	})
 
 	for _, file := range files {
-		FindEnums(file)
+		FindEnumTypes(file)
 	}
 
 	for _, file := range files {
-		FindEmbeddables(file.StructTypes)
+		FindEmbeddableType(file.StructTypes)
 	}
 
 	for _, file := range files {
-		FindEntities(file.StructTypes)
+		FindEntityTypes(file.StructTypes)
 	}
 
 	for _, file := range files {
-		FindRepositories(file.InterfaceTypes)
+		FindRepositoryTypes(file.InterfaceTypes)
 	}
 
-	ProcessEntities()
 	return marker.NewErrorList(errs)
 }

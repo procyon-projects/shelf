@@ -9,66 +9,68 @@ import (
 type EmbeddableMetadata struct {
 	StructName string
 	StructType marker.StructType
+
+	ColumnMap map[string]string
+	FieldMap  map[string]string
+	Fields    []*FieldMetadata
 }
 
-func ValidateEmbeddableMarkers(structType marker.StructType) bool {
-	markers := structType.Markers
-
-	if markers == nil {
-		return true
-	}
-
-	isValid := true
-
-	for name, values := range markers {
-		if values != nil && len(values) > 1 {
-			err := fmt.Errorf("the struct cannot be marked twice as '%s' marker", name)
-			errs = append(errs, marker.NewError(err, structType.File.FullPath, marker.Position{
-				Line:   structType.Position.Line,
-				Column: structType.Position.Column,
-			}))
-			isValid = false
-		}
-	}
-
-	return isValid
-}
-
-func FindEmbeddables(structTypes []marker.StructType) {
+func FindEmbeddableType(structTypes []marker.StructType) {
 	for _, structType := range structTypes {
-		if !ValidateEmbeddableMarkers(structType) {
+		_, markedAsEmbeddable := MarkedAs(structType.Markers, shelf.MarkerEmbeddable)
+
+		if !markedAsEmbeddable {
 			continue
 		}
 
-		markerValues := structType.Markers
+		_, markedAsEntity := MarkedAs(structType.Markers, shelf.MarkerEntity)
 
-		if markerValues == nil {
+		if markedAsEntity {
+			err := fmt.Errorf("the struct cannot be marked as both shelf:entity and shelf:embeddable markers")
+			errs = append(errs, marker.NewError(err, structType.File.FullPath, structType.Position))
 			continue
 		}
 
-		markers, ok := markerValues[shelf.MarkerEmbeddable]
-
-		if !ok {
-			continue
+		embeddableMetadata := &EmbeddableMetadata{
+			StructName: structType.Name,
+			StructType: structType,
+			ColumnMap:  make(map[string]string),
+			FieldMap:   make(map[string]string),
+			Fields:     make([]*FieldMetadata, 0),
 		}
 
-		matched := false
+		embeddableMetadataByStructName[FullStructName(structType)] = embeddableMetadata
+	}
+}
 
-		for _, candidateMarker := range markers {
-			switch candidateMarker.(type) {
-			case shelf.EmbeddableMarker:
-				matched = true
+func ProcessEmbeddableTypes() {
+	for _, metadata := range embeddableMetadataByStructName {
+		ProcessEmbeddableType(metadata)
+	}
+}
+
+func ProcessEmbeddableType(metadata *EmbeddableMetadata) {
+	columns := make(map[string]bool)
+	fieldMetadataArr := CollectFieldMetadata(metadata.StructType)
+
+	for _, fieldMetadata := range fieldMetadataArr {
+
+		if fieldMetadata.MarkerFlags&Column == Column {
+			if fieldMetadata.ColumnMarker.Name != "" {
+				fieldMetadata.ColumnName = fieldMetadata.ColumnMarker.Name
 			}
+			fieldMetadata.ColumnLength = fieldMetadata.ColumnMarker.Length
+			fieldMetadata.UniqueColumn = fieldMetadata.ColumnMarker.Unique
 		}
 
-		if matched {
-			embeddableMetadata := &EmbeddableMetadata{
-				StructName: structType.Name,
-				StructType: structType,
-			}
-
-			fullStructName := structType.File.Package.Path + "#" + structType.Name
-			embeddableMetadataByStructName[fullStructName] = embeddableMetadata
+		if _, ok := columns[fieldMetadata.ColumnName]; ok {
+			err := fmt.Errorf("there is already a column with name '%s'", fieldMetadata.ColumnName)
+			errs = append(errs, marker.NewError(err, fieldMetadata.File.FullPath, fieldMetadata.Position))
+			continue
 		}
+
+		columns[fieldMetadata.ColumnName] = true
+		metadata.ColumnMap[fieldMetadata.ColumnName] = fieldMetadata.FieldName
+		metadata.FieldMap[fieldMetadata.FieldName] = fieldMetadata.ColumnName
 	}
 }
