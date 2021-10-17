@@ -10,9 +10,20 @@ type EmbeddableMetadata struct {
 	StructName string
 	StructType marker.StructType
 
-	ColumnMap map[string]string
-	FieldMap  map[string]string
-	Fields    []*FieldMetadata
+	ColumnMap     map[string]string
+	FieldMap      map[string]string
+	Fields        []*FieldMetadata
+	InheritFields []*FieldMetadata
+}
+
+func (metadata *EmbeddableMetadata) FindFieldMetadataByFieldName(fieldName string) (*FieldMetadata, bool) {
+	for _, field := range metadata.Fields {
+		if field.FieldName == fieldName {
+			return field, true
+		}
+	}
+
+	return nil, false
 }
 
 func FindEmbeddableType(structTypes []marker.StructType) {
@@ -32,11 +43,12 @@ func FindEmbeddableType(structTypes []marker.StructType) {
 		}
 
 		embeddableMetadata := &EmbeddableMetadata{
-			StructName: structType.Name,
-			StructType: structType,
-			ColumnMap:  make(map[string]string),
-			FieldMap:   make(map[string]string),
-			Fields:     make([]*FieldMetadata, 0),
+			StructName:    structType.Name,
+			StructType:    structType,
+			ColumnMap:     make(map[string]string),
+			FieldMap:      make(map[string]string),
+			Fields:        make([]*FieldMetadata, 0),
+			InheritFields: make([]*FieldMetadata, 0),
 		}
 
 		embeddableMetadataByStructName[FullStructName(structType)] = embeddableMetadata
@@ -45,32 +57,80 @@ func FindEmbeddableType(structTypes []marker.StructType) {
 
 func ProcessEmbeddableTypes() {
 	for _, metadata := range embeddableMetadataByStructName {
-		ProcessEmbeddableType(metadata)
+		PreProcessEmbeddableType(metadata)
 	}
+
+	PostProcessEmbeddableTypes()
 }
 
-func ProcessEmbeddableType(metadata *EmbeddableMetadata) {
-	columns := make(map[string]bool)
+func PreProcessEmbeddableType(metadata *EmbeddableMetadata) {
 	fieldMetadataArr := CollectFieldMetadata(metadata.StructType)
 
 	for _, fieldMetadata := range fieldMetadataArr {
-
-		if fieldMetadata.MarkerFlags&Column == Column {
-			if fieldMetadata.ColumnMarker.Name != "" {
-				fieldMetadata.ColumnName = fieldMetadata.ColumnMarker.Name
-			}
-			fieldMetadata.ColumnLength = fieldMetadata.ColumnMarker.Length
-			fieldMetadata.UniqueColumn = fieldMetadata.ColumnMarker.Unique
-		}
-
-		if _, ok := columns[fieldMetadata.ColumnName]; ok {
-			err := fmt.Errorf("there is already a column with name '%s'", fieldMetadata.ColumnName)
-			errs = append(errs, marker.NewError(err, fieldMetadata.File.FullPath, fieldMetadata.Position))
+		if fieldMetadata.TypeMetadata.HasAnError {
 			continue
 		}
 
-		columns[fieldMetadata.ColumnName] = true
-		metadata.ColumnMap[fieldMetadata.ColumnName] = fieldMetadata.FieldName
-		metadata.FieldMap[fieldMetadata.FieldName] = fieldMetadata.ColumnName
+		if _, ok := metadata.ColumnMap[fieldMetadata.ColumnName]; ok {
+			err := fmt.Errorf("there is already a column with name '%s'", fieldMetadata.ColumnName)
+			errs = append(errs, marker.NewError(err, fieldMetadata.File.FullPath, fieldMetadata.Position))
+		}
+
+		if fieldMetadata.MarkerFlags&Associations != 0 {
+			err := fmt.Errorf("the embeddable types do not support associations fields")
+			errs = append(errs, marker.NewError(err, fieldMetadata.File.FullPath, fieldMetadata.Position))
+		}
+
+		if !fieldMetadata.IsEmbedded && fieldMetadata.MarkerFlags&Transient == 0 && fieldMetadata.MarkerFlags&Embedded == 0 &&
+			fieldMetadata.MarkerFlags&Associations == 0 {
+			metadata.ColumnMap[fieldMetadata.ColumnName] = fieldMetadata.FieldName
+			metadata.FieldMap[fieldMetadata.FieldName] = fieldMetadata.ColumnName
+		}
+
+		metadata.Fields = append(metadata.Fields, fieldMetadata)
 	}
+}
+
+func PostProcessEmbeddableTypes() {
+	for _, metadata := range embeddableMetadataByStructName {
+		PostProcessEmbeddableType(metadata)
+	}
+}
+
+func PostProcessEmbeddableType(metadata *EmbeddableMetadata) {
+	for _, fieldMetadata := range metadata.Fields {
+		if fieldMetadata.IsEmbedded {
+			embeddedMetadata, embeddableExists := embeddableMetadataByStructName[fieldMetadata.TypeMetadata.ImportPath+"#"+fieldMetadata.TypeMetadata.SimpleTypeName]
+
+			if !embeddableExists {
+				err := fmt.Errorf("the field type '%s' cannot be embedded because the type is not marked as shelf:embeddable marker", fieldMetadata.TypeMetadata.TypeName)
+				errs = append(errs, marker.NewError(err, fieldMetadata.File.FullPath, fieldMetadata.Position))
+			} else {
+
+				for _, field := range embeddedMetadata.Fields {
+					if inheritFieldMetadata, ok := embeddedMetadata.FindFieldMetadataByFieldName(field.FieldName); ok {
+						metadata.InheritFields = append(metadata.InheritFields, inheritFieldMetadata)
+					}
+				}
+
+			}
+		}
+	}
+}
+
+func FindColumnMap(metadata *EmbeddableMetadata) {
+	for _, fieldMetadata := range metadata.Fields {
+		if fieldMetadata.IsEmbedded {
+			embeddedMetadata, embeddableExists := embeddableMetadataByStructName[fieldMetadata.TypeMetadata.ImportPath+"#"+fieldMetadata.TypeMetadata.SimpleTypeName]
+
+			if !embeddableExists {
+				continue
+			}
+
+			FindColumnMap(embeddedMetadata)
+		} else {
+			metadata.InheritFields = append(metadata.InheritFields)
+		}
+	}
+
 }

@@ -31,7 +31,7 @@ func MarkedAs(values marker.MarkerValues, marker string) ([]interface{}, bool) {
 	return markers, true
 }
 
-func MustBeMarkerOnceAtMost(typeName string, markers marker.MarkerValues, markerName string, file *marker.File, position marker.Position) (interface{}, bool) {
+func MustBeMarkerAtMostOnce(typeName string, markers marker.MarkerValues, markerName string, file *marker.File, position marker.Position) (interface{}, bool) {
 	values, ok := MarkedAs(markers, markerName)
 
 	if !ok {
@@ -46,16 +46,16 @@ func MustBeMarkerOnceAtMost(typeName string, markers marker.MarkerValues, marker
 	return values[0], true
 }
 
-func StructMustBeMarkedOnceAtMost(structType marker.StructType, markerName string) (interface{}, bool) {
-	return MustBeMarkerOnceAtMost(structType.Name, structType.Markers, markerName, structType.File, structType.Position)
+func StructMustBeMarkedAtMostOnce(structType marker.StructType, markerName string) (interface{}, bool) {
+	return MustBeMarkerAtMostOnce(structType.Name, structType.Markers, markerName, structType.File, structType.Position)
 }
 
-func InterfaceMustBeMarkedOnceAtMost(interfaceType marker.InterfaceType, markerName string) (interface{}, bool) {
-	return MustBeMarkerOnceAtMost(interfaceType.Name, interfaceType.Markers, markerName, interfaceType.File, interfaceType.Position)
+func InterfaceMustBeMarkedAtMostOnce(interfaceType marker.InterfaceType, markerName string) (interface{}, bool) {
+	return MustBeMarkerAtMostOnce(interfaceType.Name, interfaceType.Markers, markerName, interfaceType.File, interfaceType.Position)
 }
 
-func FieldMustBeMarkedOnceAtMost(field marker.Field, markerName string) (interface{}, bool) {
-	return MustBeMarkerOnceAtMost(field.Name, field.Markers, markerName, field.File, field.Position)
+func FieldMustBeMarkedAtMostOnce(field marker.Field, markerName string) (interface{}, bool) {
+	return MustBeMarkerAtMostOnce(field.Name, field.Markers, markerName, field.File, field.Position)
 }
 
 func FieldCanBeMarkedManyTimes(field marker.Field, markerName string) ([]interface{}, bool) {

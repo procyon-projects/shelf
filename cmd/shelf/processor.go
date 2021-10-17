@@ -103,5 +103,9 @@ func ProcessMarkers(collector *marker.Collector, pkgs []*marker.Package) error {
 		FindRepositoryTypes(file.InterfaceTypes)
 	}
 
+	ProcessEmbeddableTypes()
+
+	ProcessEntityTypes()
+
 	return marker.NewErrorList(errs)
 }

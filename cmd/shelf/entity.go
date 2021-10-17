@@ -13,10 +13,22 @@ type EntityMetadata struct {
 	StructName string
 	StructType marker.StructType
 
-	IdField   *FieldMetadata
-	ColumnMap map[string]string
-	FieldMap  map[string]string
-	Fields    []*FieldMetadata
+	IdField       *FieldMetadata
+	AllColumnMap  map[string]string
+	ColumnMap     map[string]string
+	FieldMap      map[string]string
+	Fields        []*FieldMetadata
+	InheritFields []*FieldMetadata
+}
+
+func (metadata *EntityMetadata) FindFieldMetadataByFieldName(fieldName string) (*FieldMetadata, bool) {
+	for _, field := range metadata.Fields {
+		if field.FieldName == fieldName {
+			return field, true
+		}
+	}
+
+	return nil, false
 }
 
 func FindEntityTypes(structTypes []marker.StructType) {
@@ -24,17 +36,21 @@ func FindEntityTypes(structTypes []marker.StructType) {
 
 		var entityMarker shelf.EntityMarker
 
-		if value, ok := StructMustBeMarkedOnceAtMost(structType, shelf.MarkerEntity); ok {
+		if value, ok := StructMustBeMarkedAtMostOnce(structType, shelf.MarkerEntity); ok {
 			entityMarker = value.(shelf.EntityMarker)
 		} else {
 			continue
 		}
 
 		metadata := &EntityMetadata{
-			EntityName: strings.TrimSpace(structType.Name),
-			TableName:  shelf.ToSnakeCase(strings.TrimSpace(structType.Name)),
-			StructName: structType.Name,
-			StructType: structType,
+			EntityName:   strings.TrimSpace(structType.Name),
+			TableName:    shelf.ToSnakeCase(strings.TrimSpace(structType.Name)),
+			StructName:   structType.Name,
+			StructType:   structType,
+			AllColumnMap: make(map[string]string),
+			ColumnMap:    make(map[string]string),
+			FieldMap:     make(map[string]string),
+			Fields:       make([]*FieldMetadata, 0),
 		}
 
 		if strings.TrimSpace(entityMarker.Name) != "" {
@@ -47,7 +63,7 @@ func FindEntityTypes(structTypes []marker.StructType) {
 			break
 		}
 
-		if value, ok := StructMustBeMarkedOnceAtMost(structType, shelf.MarkerTable); ok {
+		if value, ok := StructMustBeMarkedAtMostOnce(structType, shelf.MarkerTable); ok {
 			tableMarker := value.(shelf.TableMarker)
 
 			if strings.TrimSpace(tableMarker.Name) != "" {
@@ -70,32 +86,57 @@ func FindEntityTypes(structTypes []marker.StructType) {
 
 func ProcessEntityTypes() {
 	for _, metadata := range entityMetadataByStructName {
-		ProcessEntityType(metadata)
+		PreProcessEntityType(metadata)
 	}
+
+	PostProcessEntityTypes()
 }
 
-func ProcessEntityType(metadata *EntityMetadata) {
-	columns := make(map[string]bool)
+func PreProcessEntityType(metadata *EntityMetadata) {
 	fieldMetadataArr := CollectFieldMetadata(metadata.StructType)
 
 	for _, fieldMetadata := range fieldMetadataArr {
-
-		if fieldMetadata.MarkerFlags&Column == Column {
-			if fieldMetadata.ColumnMarker.Name != "" {
-				fieldMetadata.ColumnName = fieldMetadata.ColumnMarker.Name
-			}
-			fieldMetadata.ColumnLength = fieldMetadata.ColumnMarker.Length
-			fieldMetadata.UniqueColumn = fieldMetadata.ColumnMarker.Unique
-		}
-
-		if _, ok := columns[fieldMetadata.ColumnName]; ok {
-			err := fmt.Errorf("there is already a column with name '%s'", fieldMetadata.ColumnName)
-			errs = append(errs, marker.NewError(err, fieldMetadata.File.FullPath, fieldMetadata.Position))
+		if fieldMetadata.TypeMetadata.HasAnError {
 			continue
 		}
 
-		columns[fieldMetadata.ColumnName] = true
-		metadata.ColumnMap[fieldMetadata.ColumnName] = fieldMetadata.FieldName
-		metadata.FieldMap[fieldMetadata.FieldName] = fieldMetadata.ColumnName
+		if _, ok := metadata.ColumnMap[fieldMetadata.ColumnName]; ok {
+			err := fmt.Errorf("there is already a column with name '%s'", fieldMetadata.ColumnName)
+			errs = append(errs, marker.NewError(err, fieldMetadata.File.FullPath, fieldMetadata.Position))
+		}
+
+		if !fieldMetadata.IsEmbedded && fieldMetadata.MarkerFlags&Transient == 0 && fieldMetadata.MarkerFlags&Embedded == 0 &&
+			fieldMetadata.MarkerFlags&Associations == 0 {
+			metadata.AllColumnMap[fieldMetadata.ColumnName] = fieldMetadata.FieldName
+			metadata.ColumnMap[fieldMetadata.ColumnName] = fieldMetadata.FieldName
+			metadata.FieldMap[fieldMetadata.FieldName] = fieldMetadata.ColumnName
+		}
+
+		if fieldMetadata.IsEmbedded {
+			embeddedMetadata, embeddableExists := embeddableMetadataByStructName[fieldMetadata.TypeMetadata.ImportPath+"#"+fieldMetadata.TypeMetadata.SimpleTypeName]
+
+			if !embeddableExists {
+				err := fmt.Errorf("the field type '%s' cannot be embedded because the type is not marked as shelf:embeddable marker", fieldMetadata.TypeMetadata.TypeName)
+				errs = append(errs, marker.NewError(err, fieldMetadata.File.FullPath, fieldMetadata.Position))
+			} else {
+				for _, field := range embeddedMetadata.Fields {
+					if inheritFieldMetadata, ok := embeddedMetadata.FindFieldMetadataByFieldName(field.FieldName); ok {
+						metadata.InheritFields = append(metadata.InheritFields, inheritFieldMetadata)
+					}
+				}
+			}
+		}
+
+		metadata.Fields = append(metadata.Fields, fieldMetadata)
 	}
+}
+
+func PostProcessEntityTypes() {
+	for _, metadata := range entityMetadataByStructName {
+		PostProcessEntityType(metadata)
+	}
+}
+
+func PostProcessEntityType(metadata *EntityMetadata) {
+
 }

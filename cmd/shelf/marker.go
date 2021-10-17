@@ -3,7 +3,7 @@ package main
 type MarkerFlag int
 
 const (
-	Column MarkerFlag = iota
+	Column MarkerFlag = 1 << iota
 	Transient
 	Id
 	GeneratedValue
@@ -18,4 +18,9 @@ const (
 	OneToMany
 	ManyToOne
 	ManyToMany
+)
+
+const (
+	Associations = OneToOne | OneToMany | ManyToOne | ManyToMany
+	DateAndTime  = Temporal | CreatedDate | LastModifiedDate
 )

@@ -6,11 +6,22 @@ import (
 	"github.com/procyon-projects/shelf"
 )
 
+type AttributeOverrideMetadata struct {
+	FieldName    string
+	ColumnName   string
+	ColumnLength int
+	UniqueColumn bool
+}
+
 type FieldMetadata struct {
 	FieldName    string
 	ColumnName   string
 	ColumnLength int
 	UniqueColumn bool
+
+	IsEmbedded          bool
+	TypeMetadata        *TypeMetadata
+	OverrideMetadataMap map[string]*AttributeOverrideMetadata
 
 	File      *marker.File
 	Position  marker.Position
@@ -32,12 +43,70 @@ type FieldMetadata struct {
 
 func FieldMetadataFromField(field marker.Field) *FieldMetadata {
 	return &FieldMetadata{
-		FieldName:  field.Name,
-		ColumnName: shelf.ToSnakeCase(field.Name),
-		File:       field.File,
-		Position:   field.Position,
-		Field:      field,
-		FieldType:  field.Type,
+		FieldName:           field.Name,
+		ColumnName:          shelf.ToSnakeCase(field.Name),
+		IsEmbedded:          field.IsEmbedded,
+		TypeMetadata:        TypeMetadataFromType(field.File, field.Type),
+		OverrideMetadataMap: make(map[string]*AttributeOverrideMetadata),
+		File:                field.File,
+		Position:            field.Position,
+		Field:               field,
+		FieldType:           field.Type,
+	}
+}
+
+func PreValidateFieldMetadata(metadata *FieldMetadata) {
+	if metadata.TypeMetadata.HasAnError {
+		var err error
+		if metadata.TypeMetadata.TypeName != "" {
+			err = fmt.Errorf("the field type '%s' is neither imported nor valid", metadata.TypeMetadata.TypeName)
+		} else {
+			err = fmt.Errorf("the field type is not supported")
+		}
+		errs = append(errs, marker.NewError(err, metadata.File.FullPath, metadata.Position))
+	}
+
+	if metadata.MarkerFlags&Transient == Transient && metadata.MarkerFlags|Transient != Transient {
+		err := fmt.Errorf("the field '%s' with shelf:transient marker cannot have another marker", metadata.FieldName)
+		errs = append(errs, marker.NewError(err, metadata.File.FullPath, metadata.Position))
+	}
+
+	if metadata.MarkerFlags&Enumerated == Enumerated {
+		if metadata.MarkerFlags|Column != (Column | Enumerated) {
+			err := fmt.Errorf("the field '%s' with shelf:enumerated marker can only have shelf:column marker", metadata.FieldName)
+			errs = append(errs, marker.NewError(err, metadata.File.FullPath, metadata.Position))
+		}
+
+		if metadata.TypeMetadata.IsArray {
+			err := fmt.Errorf("the enum arrays is not supported")
+			errs = append(errs, marker.NewError(err, metadata.File.FullPath, metadata.Position))
+		} else {
+			_, enumExists := enumsByName[metadata.TypeMetadata.ImportPath+"#"+metadata.TypeMetadata.SimpleTypeName]
+
+			if !enumExists {
+				err := fmt.Errorf("the field '%s' cannot be marked as shelf:enumerated because the type is not an enum", metadata.TypeMetadata.TypeName)
+				errs = append(errs, marker.NewError(err, metadata.File.FullPath, metadata.Position))
+			}
+		}
+	}
+
+	if metadata.MarkerFlags&Embedded == Embedded {
+		if metadata.MarkerFlags|AttributeOverride != (Embedded | AttributeOverride) {
+			err := fmt.Errorf("the field '%s' with shelf:embedded marker can only have shelf:attribute-override markers", metadata.FieldName)
+			errs = append(errs, marker.NewError(err, metadata.File.FullPath, metadata.Position))
+		}
+
+		if metadata.TypeMetadata.IsArray {
+			err := fmt.Errorf("the embedded arrays is not supported")
+			errs = append(errs, marker.NewError(err, metadata.File.FullPath, metadata.Position))
+		} else {
+			_, embeddableExists := embeddableMetadataByStructName[metadata.TypeMetadata.ImportPath+"#"+metadata.TypeMetadata.SimpleTypeName]
+
+			if !embeddableExists {
+				err := fmt.Errorf("the field '%s' cannot be marked as shelf:embedded because the type is not an embeddedable", metadata.TypeMetadata.TypeName)
+				errs = append(errs, marker.NewError(err, metadata.File.FullPath, metadata.Position))
+			}
+		}
 	}
 }
 
@@ -48,47 +117,47 @@ func CollectFieldMetadata(structType marker.StructType) []*FieldMetadata {
 		metadata := FieldMetadataFromField(field)
 		fields = append(fields, metadata)
 
-		if !field.IsExported {
+		if !field.IsEmbedded && !field.IsExported {
 			err := fmt.Errorf("the field '%s' in '%s' must be exported", field.Name, structType.Name)
 			errs = append(errs, marker.NewError(err, field.File.FullPath, field.Position))
 		}
 
-		if value, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerColumn); ok {
+		if value, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerColumn); ok {
 			metadata.MarkerFlags |= Column
 			columnMarker := value.(shelf.ColumnMarker)
 			field.Name = columnMarker.Name
 		}
 
-		if _, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerTransient); ok {
+		if _, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerTransient); ok {
 			metadata.MarkerFlags |= Transient
 		}
 
-		if _, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerId); ok {
+		if _, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerId); ok {
 			metadata.MarkerFlags |= Id
 		}
 
-		if _, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerGeneratedValue); ok {
+		if _, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerGeneratedValue); ok {
 			metadata.MarkerFlags |= GeneratedValue
 		}
 
-		if _, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerLob); ok {
+		if _, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerLob); ok {
 			metadata.MarkerFlags |= Lob
 		}
 
-		if value, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerTemporal); ok {
+		if value, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerTemporal); ok {
 			metadata.MarkerFlags |= Temporal
 			metadata.TemporalMarker = value.(shelf.TemporalMarker)
 		}
 
-		if _, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerCreatedDate); ok {
+		if _, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerCreatedDate); ok {
 			metadata.MarkerFlags |= CreatedDate
 		}
 
-		if _, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerLastModifiedDate); ok {
+		if _, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerLastModifiedDate); ok {
 			metadata.MarkerFlags |= LastModifiedDate
 		}
 
-		if _, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerEmbedded); ok {
+		if _, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerEmbedded); ok {
 			metadata.MarkerFlags |= Embedded
 		}
 
@@ -97,29 +166,50 @@ func CollectFieldMetadata(structType marker.StructType) []*FieldMetadata {
 			metadata.AttributeOverrideMarkers = ToAttributeOverrideMarkers(values)
 		}
 
-		if value, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerEnumerated); ok {
+		if value, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerEnumerated); ok {
 			metadata.MarkerFlags |= Enumerated
 			metadata.EnumeratedMarker = value.(shelf.EnumeratedMarker)
 		}
 
-		if value, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerOneToOne); ok {
+		if value, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerOneToOne); ok {
 			metadata.MarkerFlags |= OneToOne
 			metadata.OneToOneMarker = value.(shelf.OneToOneMarker)
 		}
 
-		if value, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerOneToMany); ok {
+		if value, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerOneToMany); ok {
 			metadata.MarkerFlags |= OneToMany
 			metadata.OneToManyMarker = value.(shelf.OneToManyMarker)
 		}
 
-		if value, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerManyToOne); ok {
+		if value, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerManyToOne); ok {
 			metadata.MarkerFlags |= ManyToOne
 			metadata.ManyToOneMarker = value.(shelf.ManyToOneMarker)
 		}
 
-		if value, ok := FieldMustBeMarkedOnceAtMost(field, shelf.MarkerManyToMany); ok {
+		if value, ok := FieldMustBeMarkedAtMostOnce(field, shelf.MarkerManyToMany); ok {
 			metadata.MarkerFlags |= ManyToMany
 			metadata.ManyToManyMarker = value.(shelf.ManyToManyMarker)
+		}
+
+		PreValidateFieldMetadata(metadata)
+
+		if metadata.MarkerFlags&Column == Column {
+			if metadata.ColumnMarker.Name != "" {
+				metadata.ColumnName = metadata.ColumnMarker.Name
+			}
+			metadata.ColumnLength = metadata.ColumnMarker.Length
+			metadata.UniqueColumn = metadata.ColumnMarker.Unique
+		}
+
+		if !metadata.IsEmbedded && metadata.MarkerFlags&Embedded == Embedded && metadata.MarkerFlags&AttributeOverride == AttributeOverride {
+			for _, overrideMarker := range metadata.AttributeOverrideMarkers {
+				metadata.OverrideMetadataMap[overrideMarker.Name] = &AttributeOverrideMetadata{
+					FieldName:    overrideMarker.Name,
+					ColumnName:   overrideMarker.ColumnName,
+					ColumnLength: overrideMarker.ColumnLength,
+					UniqueColumn: overrideMarker.ColumnUnique,
+				}
+			}
 		}
 	}
 

@@ -18,7 +18,7 @@ func FindRepositoryTypes(interfaceTypes []marker.InterfaceType) {
 
 		var repositoryMarker shelf.RepositoryMarker
 
-		if value, ok := InterfaceMustBeMarkedOnceAtMost(interfaceType, shelf.MarkerRepository); ok {
+		if value, ok := InterfaceMustBeMarkedAtMostOnce(interfaceType, shelf.MarkerRepository); ok {
 			repositoryMarker = value.(shelf.RepositoryMarker)
 		} else {
 			continue

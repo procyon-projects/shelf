@@ -2,35 +2,42 @@ package package1
 
 // +import=shelf, Pkg=github.com/procyon-projects/shelf
 import (
+	"github.com/procyon-projects/shelf/test/package2"
 	"time"
 )
 
-type UserStatus int
+// +shelf:embeddable
+type IdEntity struct {
+	// +shelf:id
+	// +shelf:generated-value
+	Id int
+}
 
-const (
-	ACTIVATED UserStatus = iota
-	BLOCKED
-)
+// +shelf:embeddable
+type BaseEntity struct {
+	IdEntity
+	// +shelf:column=created_on
+	// +shelf:created-date
+	CreatedOn time.Time
+}
 
 // +shelf:entity
 // +shelf:table
 type User struct {
-	// +shelf:id
-	// +shelf:generated-value
-	Id int
+	BaseEntity
 	// +shelf:column=Unique=true, Length=500
 	Email string
 
 	FirstName string
 	LastName  string
 	// +shelf:enumerated=STRING
-	Status UserStatus
+	Status package2.UserStatus
 
 	// +shelf:embedded
 	// +shelf:attribute-override=City, ColumnName="address_city"
 	// +shelf:attribute-override=Country, ColumnName="address_country"
 	// +shelf:attribute-override=PostCode, ColumnName="address_post_code"
-	Address Address
+	Address *Address
 
 	// +shelf:one-to-one:FetchType=LAZY,MappedBy=User
 	CreditCard *CreditCard
@@ -52,8 +59,11 @@ type CreditCard struct {
 
 // +shelf:embeddable
 type Address struct {
-	City     string
-	Country  string
+	// +shelf:column=postCity
+	City *[]string
+	// +shelf:column=postCountry
+	Country string
+	// +shelf:column=postCode
 	PostCode string
 }
 
@@ -68,7 +78,7 @@ type Post struct {
 	Title string
 	// +shelf:one-to-one
 	// +shelf:join-column=post_detail_id
-	PostDetails PostDetails
+	PostDetails *PostDetails
 }
 
 // +shelf:entity=PostDetails
