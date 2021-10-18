@@ -13,12 +13,15 @@ type EntityMetadata struct {
 	StructName string
 	StructType marker.StructType
 
-	IdField       *FieldMetadata
-	AllColumnMap  map[string]string
-	ColumnMap     map[string]string
-	FieldMap      map[string]string
-	Fields        []*FieldMetadata
-	InheritFields []*FieldMetadata
+	IdField *FieldMetadata
+
+	AllColumnMap map[string]string
+	AllFields    []*FieldMetadata
+	FieldKeyMap  map[string]*FieldMetadata
+
+	ColumnMap map[string]string
+	FieldMap  map[string]string
+	Fields    []*FieldMetadata
 }
 
 func (metadata *EntityMetadata) FindFieldMetadataByFieldName(fieldName string) (*FieldMetadata, bool) {
@@ -50,6 +53,7 @@ func FindEntityTypes(structTypes []marker.StructType) {
 			AllColumnMap: make(map[string]string),
 			ColumnMap:    make(map[string]string),
 			FieldMap:     make(map[string]string),
+			FieldKeyMap:  make(map[string]*FieldMetadata),
 			Fields:       make([]*FieldMetadata, 0),
 		}
 
@@ -107,23 +111,16 @@ func PreProcessEntityType(metadata *EntityMetadata) {
 
 		if !fieldMetadata.IsEmbedded && fieldMetadata.MarkerFlags&Transient == 0 && fieldMetadata.MarkerFlags&Embedded == 0 &&
 			fieldMetadata.MarkerFlags&Associations == 0 {
-			metadata.AllColumnMap[fieldMetadata.ColumnName] = fieldMetadata.FieldName
 			metadata.ColumnMap[fieldMetadata.ColumnName] = fieldMetadata.FieldName
 			metadata.FieldMap[fieldMetadata.FieldName] = fieldMetadata.ColumnName
 		}
 
 		if fieldMetadata.IsEmbedded {
-			embeddedMetadata, embeddableExists := embeddableMetadataByStructName[fieldMetadata.TypeMetadata.ImportPath+"#"+fieldMetadata.TypeMetadata.SimpleTypeName]
+			_, embeddableExists := embeddableMetadataByStructName[fieldMetadata.TypeMetadata.ImportPath+"#"+fieldMetadata.TypeMetadata.SimpleTypeName]
 
 			if !embeddableExists {
 				err := fmt.Errorf("the field type '%s' cannot be embedded because the type is not marked as shelf:embeddable marker", fieldMetadata.TypeMetadata.TypeName)
 				errs = append(errs, marker.NewError(err, fieldMetadata.File.FullPath, fieldMetadata.Position))
-			} else {
-				for _, field := range embeddedMetadata.Fields {
-					if inheritFieldMetadata, ok := embeddedMetadata.FindFieldMetadataByFieldName(field.FieldName); ok {
-						metadata.InheritFields = append(metadata.InheritFields, inheritFieldMetadata)
-					}
-				}
 			}
 		}
 
@@ -138,5 +135,28 @@ func PostProcessEntityTypes() {
 }
 
 func PostProcessEntityType(metadata *EntityMetadata) {
+	fieldKeyMap := make(map[string]*FieldMetadata, 0)
+	metadata.AllFields = CollectAllFields("", metadata.Fields, nil, fieldKeyMap, nil)
+	metadata.FieldKeyMap = fieldKeyMap
 
+	for _, field := range metadata.AllFields {
+
+		if !field.IsEmbedded && field.MarkerFlags&Transient == 0 && field.MarkerFlags&Embedded == 0 &&
+			field.MarkerFlags&Associations == 0 {
+
+			if _, ok := metadata.AllColumnMap[field.ColumnName]; ok {
+				err := fmt.Errorf("there is already a column with name '%s'", field.ColumnName)
+				position := field.Position
+
+				if field.ParentField != nil {
+					position = field.ParentField.Position
+				}
+
+				errs = append(errs, marker.NewError(err, field.File.FullPath, position))
+			} else {
+				metadata.AllColumnMap[field.ColumnName] = field.FieldName
+			}
+
+		}
+	}
 }

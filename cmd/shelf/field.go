@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/procyon-projects/marker"
 	"github.com/procyon-projects/shelf"
+	"strings"
 )
 
 type AttributeOverrideMetadata struct {
@@ -14,6 +15,9 @@ type AttributeOverrideMetadata struct {
 }
 
 type FieldMetadata struct {
+	Key         string
+	ParentField *FieldMetadata
+
 	FieldName    string
 	ColumnName   string
 	ColumnLength int
@@ -214,4 +218,63 @@ func CollectFieldMetadata(structType marker.StructType) []*FieldMetadata {
 	}
 
 	return fields
+}
+
+func CollectAllFields(key string, fields []*FieldMetadata, parentField *FieldMetadata, fieldKeyMap map[string]*FieldMetadata, overrideMap map[string]*AttributeOverrideMetadata) []*FieldMetadata {
+	collectedFields := make([]*FieldMetadata, 0)
+
+	for _, field := range fields {
+
+		fieldKey := strings.Join([]string{key, field.FieldName}, ".")
+
+		if key == "" {
+			fieldKey = field.FieldName
+		}
+
+		field.Key = fieldKey
+		field.ParentField = parentField
+
+		if fieldKey != "" {
+			fieldKeyMap[fieldKey] = field
+		}
+
+		if field.IsEmbedded || field.MarkerFlags&Embedded == Embedded {
+			embeddedMetadata, embeddableExists := embeddableMetadataByStructName[field.TypeMetadata.ImportPath+"#"+field.TypeMetadata.SimpleTypeName]
+
+			if embeddableExists {
+				// TODO merge attribute overrides
+				if overrideMap != nil {
+					collectedFields = append(collectedFields, CollectAllFields(fieldKey, embeddedMetadata.Fields, field, fieldKeyMap, overrideMap)...)
+				} else {
+					collectedFields = append(collectedFields, CollectAllFields(fieldKey, embeddedMetadata.Fields, field, fieldKeyMap, field.OverrideMetadataMap)...)
+				}
+
+			}
+			continue
+		}
+
+		keys := strings.SplitN(key, ".", 2)
+
+		var overrideMetadataKey = ""
+
+		if len(keys) == 1 && keys[0] != "" {
+			overrideMetadataKey = field.FieldName
+		} else if len(keys) == 2 {
+			overrideMetadataKey = strings.Join([]string{keys[1], field.FieldName}, ".")
+		}
+
+		// TODO convert the embedded fields to snack case
+
+		if overrideMap != nil && overrideMetadataKey != "" {
+			if overrideMetadata, ok := overrideMap[overrideMetadataKey]; ok {
+				field.ColumnName = overrideMetadata.ColumnName
+				field.ColumnLength = overrideMetadata.ColumnLength
+				field.UniqueColumn = overrideMetadata.UniqueColumn
+			}
+		}
+
+		collectedFields = append(collectedFields, field)
+	}
+
+	return collectedFields
 }

@@ -35,7 +35,7 @@ type User struct {
 
 	// +shelf:embedded
 	// +shelf:attribute-override=City, ColumnName="address_city"
-	// +shelf:attribute-override=Country, ColumnName="address_country"
+	// +shelf:attribute-override="Country.Name", ColumnName="address_country"
 	// +shelf:attribute-override=PostCode, ColumnName="address_post_code"
 	Address *Address
 
@@ -61,10 +61,17 @@ type CreditCard struct {
 type Address struct {
 	// +shelf:column=postCity
 	City *[]string
-	// +shelf:column=postCountry
-	Country string
+	// +shelf:embedded
+	// +shelf:attribute-override="Name", ColumnName="address_post_code"
+	Country *Country
 	// +shelf:column=postCode
 	PostCode string
+}
+
+// +shelf:embeddable
+type Country struct {
+	// +shelf:column=Name
+	Name string
 }
 
 // +shelf:entity=Post
