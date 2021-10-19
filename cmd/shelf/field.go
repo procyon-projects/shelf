@@ -242,9 +242,10 @@ func CollectAllFields(key string, fields []*FieldMetadata, parentField *FieldMet
 			embeddedMetadata, embeddableExists := embeddableMetadataByStructName[field.TypeMetadata.ImportPath+"#"+field.TypeMetadata.SimpleTypeName]
 
 			if embeddableExists {
-				// TODO merge attribute overrides
+
 				if overrideMap != nil {
-					collectedFields = append(collectedFields, CollectAllFields(fieldKey, embeddedMetadata.Fields, field, fieldKeyMap, overrideMap)...)
+					mergedOverrideMap := MergeOverrideMetadataMap(overrideMap, field.FieldName, field.OverrideMetadataMap)
+					collectedFields = append(collectedFields, CollectAllFields(fieldKey, embeddedMetadata.Fields, field, fieldKeyMap, mergedOverrideMap)...)
 				} else {
 					collectedFields = append(collectedFields, CollectAllFields(fieldKey, embeddedMetadata.Fields, field, fieldKeyMap, field.OverrideMetadataMap)...)
 				}
@@ -261,15 +262,17 @@ func CollectAllFields(key string, fields []*FieldMetadata, parentField *FieldMet
 			overrideMetadataKey = field.FieldName
 		} else if len(keys) == 2 {
 			overrideMetadataKey = strings.Join([]string{keys[1], field.FieldName}, ".")
+		} else {
+			overrideMetadataKey = field.FieldName
 		}
-
-		// TODO convert the embedded fields to snack case
 
 		if overrideMap != nil && overrideMetadataKey != "" {
 			if overrideMetadata, ok := overrideMap[overrideMetadataKey]; ok {
 				field.ColumnName = overrideMetadata.ColumnName
 				field.ColumnLength = overrideMetadata.ColumnLength
 				field.UniqueColumn = overrideMetadata.UniqueColumn
+			} else {
+				field.ColumnName = shelf.ToSnakeCase(fieldKey)
 			}
 		}
 
@@ -277,4 +280,24 @@ func CollectAllFields(key string, fields []*FieldMetadata, parentField *FieldMet
 	}
 
 	return collectedFields
+}
+
+func MergeOverrideMetadataMap(parentOverrideMap map[string]*AttributeOverrideMetadata,
+	fieldPrefix string,
+	fieldOverrideMap map[string]*AttributeOverrideMetadata) map[string]*AttributeOverrideMetadata {
+	result := make(map[string]*AttributeOverrideMetadata, 0)
+
+	if fieldOverrideMap != nil {
+		for key, value := range fieldOverrideMap {
+			result[fieldPrefix+"."+key] = value
+		}
+	}
+
+	if parentOverrideMap != nil {
+		for key, value := range parentOverrideMap {
+			result[key] = value
+		}
+	}
+
+	return result
 }
