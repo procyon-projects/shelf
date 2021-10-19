@@ -1,7 +1,0 @@
-var count int
-
-err := db.QueryRow("SELECT COUNT(*) FROM {{ .Table }}").Scan(&count)
-
-if err != nil {
-    return
-}

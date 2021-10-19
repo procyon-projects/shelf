@@ -67,17 +67,3 @@ func ValidateMarkers(collector *marker.Collector, pkgs []*marker.Package) error 
 
 	return marker.NewErrorList(validationErrors)
 }
-
-func GetFullNameFromType(typ marker.Type) string {
-	switch typed := typ.(type) {
-	case *marker.ObjectType:
-		name := typed.Name
-
-		if typed.ImportName != "" {
-			name = typed.ImportName + "." + name
-		}
-		return name
-	}
-
-	return ""
-}

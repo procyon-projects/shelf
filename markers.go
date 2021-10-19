@@ -32,7 +32,9 @@ const (
 	MarkerManyToOne  = "shelf:many-to-one"
 	MarkerManyToMany = "shelf:many-to-many"
 
-	MarkerTemporal = "shelf:temporal"
+	MarkerTemporal         = "shelf:temporal"
+	MarkerCreatedDate      = "shelf:created-date"
+	MarkerLastModifiedDate = "shelf:last-modified-date"
 )
 
 // +marker="shelf:entity", UseValueSyntax=true, Description="Specifies that the class is an entity."
@@ -370,3 +372,9 @@ func (t TemporalMarker) Validate() error {
 
 	return nil
 }
+
+// +marker="shelf:created-date", Description=""
+type CreatedDateMarker struct{}
+
+// +marker="shelf:last-modified-date", Description=""
+type LastModifiedDateMarker struct{}
